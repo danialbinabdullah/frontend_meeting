@@ -1,19 +1,35 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
+from pymongo import MongoClient
+from bson import json_util
 from flask_cors import CORS
-import json
+import os
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+app = Flask(__name__, static_folder="build", template_folder='build')
+CORS(app)
 
-# Load meeting data from JSON file
-def load_meetings():
-    with open('meetings.json', 'r') as f:
-        return json.load(f)
+# MongoDB Connection
+mongo_uri = "mongodb+srv://shafshafiq:agarwal@agarwal.owd7ydl.mongodb.net/"
+client = MongoClient(mongo_uri)
+db = client["MAUI_Transcriptions"]
+
+
+@app.route('/transcriptions/<collection_name>', methods=['GET'])
+def get_transcriptions(collection_name):
+    collection = db[collection_name]
+    transcriptions = list(collection.find())
+    return jsonify(json_util.dumps(transcriptions))
+
 
 @app.route('/api/meetings', methods=['GET'])
 def get_meetings():
-    meeting_data = load_meetings()
-    return jsonify(meeting_data)
+    collection = db["Meetings"]
+    meetings = list(collection.find())
+    return jsonify(json_util.dumps(meetings))
+
+
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)
+
+

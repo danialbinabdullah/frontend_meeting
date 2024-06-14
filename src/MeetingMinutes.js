@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './MeetingMinutes.css';
-import profilePic from './black.jpeg'; // Import the profile picture
-import noResultGif from './assets/noresult.gif'; // Import the no results gif
+import profilePic from './assets/profilepic.png';
+import noResultGif from './assets/noresult.gif';
 
 // Import status icons
 import liveIcon from './assets/live.png';
@@ -15,53 +15,72 @@ const MeetingMinutes = () => {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const profileRef = useRef(null);
 
-  useEffect(() => {
+  const fetchMeetings = () => {
     fetch('http://127.0.0.1:5000/api/meetings')
       .then(response => response.json())
       .then(data => {
-        const statusOrder = { 'live': 1, 'upcoming': 2, 'concluded': 3 };
-        const sortedMeetings = data.sort((a, b) => {
-          const dateA = new Date(a.date.split(' ')[1] + ' ' + a.date.split(' ')[0]);
-          const dateB = new Date(b.date.split(' ')[1] + ' ' + b.date.split(' ')[0]);
-          if (statusOrder[a.status] !== statusOrder[b.status]) {
-            return statusOrder[a.status] - statusOrder[b.status];
-          }
+        const parsedData = JSON.parse(data);
+        const sortedMeetings = parsedData.sort((a, b) => {
+          const dateA = new Date(`${a.date} ${a.time}`);
+          const dateB = new Date(`${b.date} ${b.time}`);
           return dateA - dateB;
         });
         setMeetings(sortedMeetings);
         setFilteredMeetings(sortedMeetings);
       });
+  };
+
+  useEffect(() => {
+    fetchMeetings();
+
+    const intervalId = setInterval(fetchMeetings, 30000); // Fetch every 30 seconds
+
+    return () => clearInterval(intervalId); // Cleanup on unmount
   }, []);
 
   useEffect(() => {
-    const now = new Date();
-    const filtered = meetings.filter(meeting => {
-      const meetingDate = new Date(meeting.date.split(' ')[1] + ' ' + meeting.date.split(' ')[0]);
-      return meeting.status === 'live' || meetingDate >= now;
+    const currentDate = new Date();
+    const currentDateString = currentDate.toDateString();
+
+    const updatedMeetings = meetings.map(meeting => {
+      const meetingDate = new Date(`${meeting.date} ${meeting.time}`);
+      const meetingDateString = meetingDate.toDateString();
+      let status = 'concluded';
+      if (meetingDate > currentDate) {
+        status = 'upcoming';
+      } else if (meetingDateString === currentDateString) {
+        status = 'live';
+      }
+      return { ...meeting, status };
+    });
+
+    // Sort meetings: live first, then upcoming, then concluded
+    const sortedMeetingsByStatus = updatedMeetings.sort((a, b) => {
+      const statusOrder = { live: 1, upcoming: 2, concluded: 3 };
+      return statusOrder[a.status] - statusOrder[b.status];
     });
 
     if (searchTerm) {
       const lowercasedSearchTerm = searchTerm.toLowerCase();
-      setFilteredMeetings(filtered.filter(meeting => {
+      setFilteredMeetings(sortedMeetingsByStatus.filter(meeting => {
         const meetingDate = new Date(meeting.date);
         const meetingDay = meetingDate.getDate().toString();
         const meetingMonth = meetingDate.toLocaleDateString('en-US', { month: 'long' }).toLowerCase();
         const meetingYear = meetingDate.getFullYear().toString();
-        const meetingStatus = meeting.status.toLowerCase();
         const meetingFullDate = meetingDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toLowerCase();
         const meetingHalfDate = meetingDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }).toLowerCase();
 
-        return meeting.title.toLowerCase().includes(lowercasedSearchTerm) ||
-          meeting.date.includes(lowercasedSearchTerm) ||
+        return (meeting.title && meeting.title.toLowerCase().includes(lowercasedSearchTerm)) ||
+          (meeting.date && meeting.date.includes(lowercasedSearchTerm)) ||
           meetingDay.includes(lowercasedSearchTerm) ||
           meetingMonth.includes(lowercasedSearchTerm) ||
           meetingYear.includes(lowercasedSearchTerm) ||
-          meetingStatus.includes(lowercasedSearchTerm) ||
+          meeting.status.toLowerCase().includes(lowercasedSearchTerm) ||
           meetingFullDate.includes(lowercasedSearchTerm) ||
           meetingHalfDate.includes(lowercasedSearchTerm);
       }));
     } else {
-      setFilteredMeetings(filtered);
+      setFilteredMeetings(sortedMeetingsByStatus);
     }
   }, [searchTerm, meetings]);
 
@@ -88,6 +107,12 @@ const MeetingMinutes = () => {
 
   const handleLogout = () => {
     // Add your logout logic here, e.g., redirect to login screen
+  };
+
+  const handleTranscriptClick = (transcriptLink) => {
+    const baseURL = "http://13.50.219.28:5000/";
+    const fullURL = baseURL + transcriptLink;
+    window.open(fullURL, "_blank");
   };
 
   return (
@@ -124,12 +149,12 @@ const MeetingMinutes = () => {
       <div className="meetings">
         {filteredMeetings.length > 0 ? (
           filteredMeetings.map((meeting) => {
-            const [monthNum, day, year] = meeting.date.split('/'); // Corrected order
+            const [monthNum, day, year] = meeting.date.split('/');
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             const monthName = monthNames[parseInt(monthNum) - 1];
 
             return (
-              <div key={meeting.id} className={`meeting ${meeting.status}`}>
+              <div key={meeting._id.$oid} className={`meeting ${meeting.status}`}>
                 <div className="date">
                   <span className="date-number">{day}</span>
                   <span className="date-text">{monthName} {year}</span>
@@ -143,8 +168,8 @@ const MeetingMinutes = () => {
                       meeting.status === 'live'
                         ? liveIcon
                         : meeting.status === 'upcoming'
-                        ? upcomingIcon
-                        : concludedIcon
+                          ? upcomingIcon
+                          : concludedIcon
                     }
                     alt={meeting.status}
                   />
@@ -152,6 +177,7 @@ const MeetingMinutes = () => {
                 <button
                   className={`transcript ${meeting.status}`}
                   disabled={meeting.status === 'upcoming'}
+                  onClick={() => handleTranscriptClick(meeting.transcription_collection_name)}
                 >
                   {meeting.status === 'live' ? 'Live Transcript' : 'Transcript'}
                 </button>
@@ -160,7 +186,7 @@ const MeetingMinutes = () => {
           })
         ) : (
           <div className="no-meetings">
-            <img src={noResultGif} alt="No Results" className="no-results-gif" />            
+            <img src={noResultGif} alt="No Results" className="no-results-gif" />
           </div>
         )}
       </div>
